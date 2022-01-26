@@ -76,6 +76,7 @@ class AdvancedDataService {
 class AdvancedViewModel: ObservableObject {
     
     @Published var data: [String] = []
+    @Published var dataBools: [Bool] = []
     @Published var error: String = ""
     
     @Published var string: String = "" {
@@ -84,7 +85,9 @@ class AdvancedViewModel: ObservableObject {
         }
     }
     let dataService = AdvancedDataService()
+    
     var cancellables = Set<AnyCancellable>()
+    let multiCastPublisher = PassthroughSubject<Int, Error>()
     
     init() {
         addSubscribers()
@@ -121,7 +124,7 @@ class AdvancedViewModel: ObservableObject {
         cancellables.insert(.init(subscriber))
         
         
-        dataService.passThroughPublisher
+//        dataService.passThroughPublisher
         
         
         // Sequence Operations
@@ -280,7 +283,15 @@ class AdvancedViewModel: ObservableObject {
 //            })
         */
         
+        let sharedPublisher = dataService.passThroughPublisher
+//            .dropFirst(3)
+            .share()
+//            .multicast {
+//                PassthroughSubject<Int, Error>()
+//            }
+            .multicast(subject: multiCastPublisher)
         
+        sharedPublisher
             .catch { error -> Just<Int> in
                 self.error = "ERROR: \(error)"
                 return Just(0)
@@ -313,6 +324,23 @@ class AdvancedViewModel: ObservableObject {
         //            }
             .store(in: &cancellables)
         
+        
+        sharedPublisher
+            .catch { error -> Just<Int> in
+                self.error = "ERROR: \(error)"
+                return Just(0)
+            }
+            .map({ $0 > 5 ? true : false })
+            .sink { [weak self] returnedValue in
+                self?.dataBools.append(returnedValue)
+            }
+            .store(in: &cancellables)
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            sharedPublisher
+                .connect()
+                .store(in: &self.cancellables)
+        }
     }
     
 }
@@ -323,15 +351,24 @@ struct ContentView: View {
     
     var body: some View {
         ScrollView {
-            VStack {
-                ForEach(vm.data, id: \.self) {
-                    Text($0)
-                        .font(.largeTitle)
-                        .fontWeight(.black)
+            HStack {
+                VStack {
+                    ForEach(vm.data, id: \.self) {
+                        Text($0)
+                            .font(.largeTitle)
+                            .fontWeight(.black)
+                    }
+                    
+                    if !vm.error.isEmpty {
+                        Text(vm.error)
+                    }
                 }
-                
-                if !vm.error.isEmpty {
-                    Text(vm.error)
+                VStack {
+                    ForEach(vm.dataBools, id: \.self) {
+                        Text($0.description)
+                            .font(.largeTitle)
+                            .fontWeight(.black)
+                    }
                 }
             }
         }
